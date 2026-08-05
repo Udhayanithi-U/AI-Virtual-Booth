@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Virtual Interview Booth</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <p class="eyebrow">Placement Prep</p>
+          <h1>AI Virtual Interview Booth</h1>
+          <p class="brand-copy">Practice one question, speak on camera, and receive instant communication intelligence.</p>
+        </div>
+
+        <section class="status-panel" aria-label="Interview status">
+          <div>
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Ready to start</span>
+          </div>
+          <p id="timer">00:00</p>
+        </section>
+
+        <section class="role-panel" aria-label="AI booth job role">
+          <label for="roleSelect">AI Booth Role</label>
+          <select id="roleSelect">
+            <option value="software">Software Engineer</option>
+            <option value="data">Data Analyst</option>
+            <option value="frontend">Frontend Developer</option>
+            <option value="backend">Backend Developer</option>
+            <option value="cloud">Cloud Engineer</option>
+            <option value="cyber">Cybersecurity Analyst</option>
+          </select>
+          <p id="roleSummary">Coding, projects, debugging, and problem-solving communication.</p>
+        </section>
+
+        <section class="question-list" aria-label="Role based interview questions">
+          <h2>Role Questions</h2>
+          <div id="questionButtons"></div>
+        </section>
+
+        <section class="demo-panel" aria-label="AI analysis capabilities">
+          <span>AI Intelligence Core</span>
+          <strong>Inbuilt AI analysis</strong>
+          <p>Speech recognition, NLP scoring, role matching, tone signals, confidence analytics.</p>
+        </section>
+      </aside>
+
+      <section class="stage">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Current Question</p>
+            <h2 id="activeQuestion"></h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" id="lastVideoBtn" type="button" disabled>View Practice History</button>
+            <button class="ghost-button" id="sampleBtn" type="button">Load Sample Answer</button>
+            <button class="ghost-button" id="newQuestionBtn" type="button">Change Question</button>
+          </div>
+        </header>
+
+        <section class="ai-strip" aria-label="AI booth intelligence">
+          <div class="holo-agent" aria-hidden="true">
+            <span></span>
+            <i></i>
+            <b></b>
+          </div>
+          <div>
+            <p class="eyebrow">Inbuilt AI Coach</p>
+            <h2 id="coachTitle">Software Engineer Interview Mode</h2>
+            <p id="coachSummary">The booth adapts questions and feedback to the selected role.</p>
+          </div>
+          <div class="signal-stack" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="ai-pulse-core" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <i></i>
+            <b></b>
+          </div>
+        </section>
+
+        <section class="interview-grid">
+          <div class="camera-panel">
+            <div class="video-frame">
+              <video id="camera" autoplay muted playsinline></video>
+              <div class="camera-placeholder" id="cameraPlaceholder">
+                <span>Camera preview appears here</span>
+              </div>
+              <div class="scanline"></div>
+              <div class="recording-chip" id="recordingChip">Analyzing voice and confidence cues</div>
+              <canvas id="waveform" width="900" height="120" aria-label="Live voice waveform"></canvas>
+            </div>
+            <div class="camera-controls">
+              <button id="startBtn" type="button">Start Answer</button>
+              <button id="stopBtn" class="secondary" type="button" disabled>Finish & Analyze</button>
+            </div>
+          </div>
+
+          <div class="metrics-panel">
+            <div class="score-card">
+              <div class="score-ring" id="scoreRing">
+                <strong id="confidenceScore">--%</strong>
+                <span>confidence</span>
+              </div>
+              <p id="verdictText">Complete an answer to unlock the AI communication score.</p>
+            </div>
+            <div class="metric-card" data-accent="blue">
+              <span>Speech Pace</span>
+              <strong id="paceScore">-- wpm</strong>
+              <small id="paceLabel">Waiting for answer</small>
+            </div>
+            <div class="metric-card" data-accent="teal">
+              <span>Voice Energy</span>
+              <strong id="energyScore">--</strong>
+              <small id="energyLabel">Mic not active</small>
+            </div>
+            <div class="metric-card" data-accent="amber">
+              <span>Clarity</span>
+              <strong id="clarityScore">--%</strong>
+              <small id="clarityLabel">Transcript needed</small>
+            </div>
+            <div class="metric-card" data-accent="violet">
+              <span>WBM Score</span>
+              <strong id="wbmScore">--%</strong>
+              <small id="wbmLabel">Word balance waiting</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="video-review" id="videoReview" aria-label="Last recorded interview video">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Playback</p>
+              <h2>Practice History</h2>
+            </div>
+            <button id="closeVideoBtn" type="button" class="icon-button">Hide Video</button>
+          </div>
+          <p class="video-note" id="videoReviewNote">Your last 5 practice attempts stay here. Review the video and score result before the next attempt.</p>
+          <div class="report-actions">
+            <button class="ghost-button" id="generateReportBtn" type="button" disabled>Generate Professional PDF Report</button>
+          </div>
+          <video id="reviewVideo" controls playsinline></video>
+          <div class="history-summary" id="historySummary" aria-live="polite"></div>
+          <div class="history-list" id="historyList"></div>
+        </section>
+
+        <section class="feedback-grid">
+          <article class="transcript-panel">
+            <div class="panel-header">
+              <h2>Live Transcript</h2>
+              <button id="clearBtn" type="button" class="icon-button" aria-label="Clear transcript">Clear</button>
+            </div>
+            <p id="transcript" class="transcript-empty">Your answer will appear here while you speak.</p>
+            <div class="manual-transcript">
+              <label for="manualTranscript">Backup transcript</label>
+              <textarea id="manualTranscript" rows="5" placeholder="If live speech text does not appear, type or paste your spoken answer here."></textarea>
+              <div class="transcript-actions">
+                <button id="analyzeTypedBtn" type="button" class="secondary-action">Analyze Typed Answer</button>
+                <button id="correctAiBtn" type="button" class="secondary-action alt-action">Correct with AI</button>
+              </div>
+              <div class="correction-panel" id="correctionPanel" aria-live="polite">
+                <div>
+                  <span>Corrected English</span>
+                  <p id="correctedEnglish">Analyze or capture a transcript, then use Correct with AI.</p>
+                </div>
+                <div>
+                  <span>Verbal mistakes</span>
+                  <ul id="mistakeList">
+                    <li>Waiting for transcript.</li>
+                  </ul>
+                </div>
+                <div>
+                  <span>Keys to include</span>
+                  <div id="keySuggestionList" class="mini-chip-list"></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="feedback-panel">
+            <div class="panel-header">
+              <h2>AI Feedback</h2>
+              <span id="feedbackBadge">Not analyzed</span>
+            </div>
+            <div class="breakdown" aria-label="Score breakdown">
+              <div>
+                <span>Pace control</span>
+                <div class="bar"><i id="paceBar"></i></div>
+              </div>
+              <div>
+                <span>Confidence cues</span>
+                <div class="bar"><i id="confidenceBar"></i></div>
+              </div>
+              <div>
+                <span>Answer structure</span>
+                <div class="bar"><i id="clarityBar"></i></div>
+              </div>
+              <div>
+                <span>Role relevance</span>
+                <div class="bar"><i id="roleBar"></i></div>
+              </div>
+              <div>
+                <span>WBM: word balance</span>
+                <div class="bar"><i id="wbmBar"></i></div>
+              </div>
+            </div>
+            <ul id="feedbackList">
+              <li>Start the camera and answer the selected engineering placement question.</li>
+              <li>The app will estimate pace, tone stability, filler words, clarity, and confidence cues.</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="ai-engine-grid" aria-label="AI analysis engine">
+          <article class="engine-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">AI Layer</p>
+                <h2>Analysis Engine</h2>
+              </div>
+              <span class="engine-badge" id="engineStatus">Standby</span>
+            </div>
+            <div class="engine-flow">
+              <div>
+                <strong>1</strong>
+                <span>Speech-to-text</span>
+              </div>
+              <div>
+                <strong>2</strong>
+                <span>NLP scoring</span>
+              </div>
+              <div>
+                <strong>3</strong>
+                <span>Voice signal</span>
+              </div>
+              <div>
+                <strong>4</strong>
+                <span>Coach output</span>
+              </div>
+            </div>
+            <div class="keyword-cloud" id="keywordCloud"></div>
+          </article>
+
+          <article class="engine-panel">
+            <div class="panel-header">
+              <h2>AI Reasoning</h2>
+              <span class="engine-badge">Explainable</span>
+            </div>
+            <dl class="reason-list">
+              <div>
+                <dt>STAR structure</dt>
+                <dd id="structureSignal">Waiting for answer</dd>
+              </div>
+              <div>
+                <dt>Role keywords</dt>
+                <dd id="keywordSignal">Waiting for role match</dd>
+              </div>
+              <div>
+                <dt>Tone estimate</dt>
+                <dd id="toneSignal">Waiting for audio</dd>
+              </div>
+              <div>
+                <dt>Next best action</dt>
+                <dd id="nextAction">Answer one question to receive targeted coaching.</dd>
+              </div>
+            </dl>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
