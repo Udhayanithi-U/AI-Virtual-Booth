@@ -85,8 +85,84 @@ const PRACTICE_DB_NAME = "ai-interview-practice-history";
 const PRACTICE_DB_VERSION = 1;
 const PRACTICE_STORE = "attempts";
 
+const extraRoleQuestions = {
+  software: [
+    "Explain one coding problem you solved recently. What approach did you choose and why?",
+    "How do you test your code before submitting or deploying it?",
+    "Describe a time your code did not work. How did you debug it?",
+    "What is object-oriented programming, and where have you used it?",
+    "How would you explain an API to a non-technical person?",
+    "Tell me about a project where you worked with a team or divided tasks.",
+    "How do you decide between writing quick code and writing maintainable code?",
+    "What data structure would you use for fast searching, and why?",
+    "How would you improve the performance of a slow feature?",
+    "What did you learn from your most difficult programming mistake?"
+  ],
+  data: [
+    "Explain one dataset you worked with and what insight you found.",
+    "How would you explain a chart to someone who does not understand data?",
+    "What steps do you follow before trusting a dataset?",
+    "How do you choose between a bar chart, line chart, and pie chart?",
+    "Tell me about a time data helped you make a decision.",
+    "How would you find out why placement results dropped this month?",
+    "What is the difference between correlation and causation?",
+    "How would you handle outliers in student performance data?",
+    "Which KPIs would you track for an interview preparation platform?",
+    "How do you convert raw data into a business recommendation?"
+  ],
+  frontend: [
+    "Explain one UI you built and how you made it user-friendly.",
+    "How do you test whether a page works well on mobile?",
+    "What is the difference between HTML, CSS, and JavaScript responsibilities?",
+    "How would you improve a page that looks crowded?",
+    "How do you make a button or form accessible?",
+    "Explain how you would organize CSS for a large project.",
+    "What happens when a user clicks a button in JavaScript?",
+    "How would you reduce loading time for a dashboard page?",
+    "Tell me about a design decision you changed after seeing user feedback.",
+    "How would you build a clean and professional landing page for this booth?"
+  ],
+  backend: [
+    "Explain one API endpoint you would create for this project.",
+    "How would you store interview history in a database?",
+    "What validations would you add before saving user data?",
+    "How would you design login for students and admins?",
+    "What is the difference between authentication and authorization?",
+    "How would you handle errors from a backend API?",
+    "What database tables would this interview booth need?",
+    "How would you protect transcripts and recorded videos?",
+    "How would you scale the backend if many students use it at the same time?",
+    "What logs would you keep to debug production issues?"
+  ],
+  cloud: [
+    "How would you host this interview booth for public users?",
+    "Which files can be served as static assets and which need backend storage?",
+    "How would you monitor whether the deployed app is working?",
+    "How would you back up user reports and practice history?",
+    "What is the difference between deployment and hosting?",
+    "How would you reduce downtime during updates?",
+    "Which cloud services would you use for video storage?",
+    "How would you control cloud cost for student usage?",
+    "Explain one deployment problem you faced and how you fixed it.",
+    "How would you make the app available during placement season traffic?"
+  ],
+  cyber: [
+    "What permissions does this app request, and why are they sensitive?",
+    "How would you explain privacy consent to users before recording?",
+    "What data should this app avoid storing?",
+    "How would you secure a downloadable PDF report?",
+    "What is phishing, and how can students identify it?",
+    "How would you protect a student account from unauthorized access?",
+    "What security risks exist if videos are uploaded without encryption?",
+    "How would you audit suspicious activity in this app?",
+    "What is the difference between encryption and hashing?",
+    "How would you build user trust in an app that uses camera and microphone?"
+  ]
+};
+
 const state = {
   activeQuestionIndex: 0,
+  generatedQuestions: {},
   stream: null,
   recognition: null,
   audioContext: null,
@@ -117,6 +193,7 @@ const els = {
   coachTitle: document.getElementById("coachTitle"),
   coachSummary: document.getElementById("coachSummary"),
   newQuestionBtn: document.getElementById("newQuestionBtn"),
+  personalizedQuestionBtn: document.getElementById("personalizedQuestionBtn"),
   sampleBtn: document.getElementById("sampleBtn"),
   lastVideoBtn: document.getElementById("lastVideoBtn"),
   closeVideoBtn: document.getElementById("closeVideoBtn"),
@@ -170,6 +247,7 @@ const els = {
 };
 
 function init() {
+  enrichQuestionBank();
   renderQuestions();
   renderKeywordCloud([]);
   setQuestion(0);
@@ -193,6 +271,7 @@ function wireEvents() {
   els.correctAiBtn.addEventListener("click", correctWithAi);
   els.manualTranscript.addEventListener("input", syncManualTranscript);
   els.sampleBtn.addEventListener("click", loadSampleAnswer);
+  els.personalizedQuestionBtn.addEventListener("click", generatePersonalizedQuestion);
   els.roleSelect.addEventListener("change", updateRole);
   els.lastVideoBtn.addEventListener("click", showLastVideo);
   els.generateReportBtn.addEventListener("click", () => generatePracticeReport(state.selectedPracticeId));
@@ -200,6 +279,18 @@ function wireEvents() {
   els.newQuestionBtn.addEventListener("click", () => {
     const next = (state.activeQuestionIndex + 1) % getQuestions().length;
     setQuestion(next);
+  });
+}
+
+function enrichQuestionBank() {
+  Object.entries(extraRoleQuestions).forEach(([roleKey, questions]) => {
+    if (!roleBank[roleKey]) return;
+    const existing = new Set(roleBank[roleKey].questions);
+    questions.forEach((question) => {
+      if (!existing.has(question)) {
+        roleBank[roleKey].questions.push(question);
+      }
+    });
   });
 }
 
@@ -213,6 +304,86 @@ function renderQuestions() {
     button.addEventListener("click", () => setQuestion(index));
     els.questionButtons.appendChild(button);
   });
+}
+
+function generatePersonalizedQuestion() {
+  const roleKey = els.roleSelect.value;
+  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript || getTypedTranscript());
+  const role = getActiveRole();
+  const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
+  const generated = state.generatedQuestions[roleKey] || [];
+  const question = buildPersonalizedQuestion(transcript, role, roleName, generated.length);
+
+  state.generatedQuestions[roleKey] = [question, ...generated]
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, 8);
+  renderQuestions();
+  setQuestion(role.questions.length);
+  els.statusText.textContent = transcript ? "AI follow-up generated" : "Role question generated";
+  setFeedback([
+    transcript
+      ? "AI created this follow-up from your own answer, so practice it like an interviewer is asking deeper about your project."
+      : "No transcript was available, so AI generated a strong role-based interview question.",
+    "Answer this question next to improve depth, confidence, and role-specific communication."
+  ], "Question ready");
+}
+
+function buildPersonalizedQuestion(transcript, role, roleName, generatedCount) {
+  const text = transcript.toLowerCase();
+  const words = transcript.match(/\b[a-zA-Z][a-zA-Z0-9+-]{2,}\b/g) || [];
+  const importantWords = extractImportantWords(words, role.keywords);
+  const matchedKeywords = role.keywords.filter((keyword) => text.includes(keyword));
+  const missingKeywords = role.keywords.filter((keyword) => !text.includes(keyword));
+  const projectTopic = importantWords[0] || matchedKeywords[0] || role.keywords[0] || "your project";
+  const missingSkill = missingKeywords[0] || role.keywords[1] || "technical depth";
+
+  if (!transcript) {
+    return `From your point of view, explain one ${roleName.toLowerCase()} project you would proudly show in an interview. What problem did it solve, what did you build, and what was the result?`;
+  }
+
+  const weakSignals = [
+    {
+      test: !/\b(result|impact|improved|reduced|increased|outcome|learned)\b/i.test(transcript),
+      question: `You explained ${projectTopic}, but the result was not very clear. What measurable impact, learning, or outcome did your work create?`
+    },
+    {
+      test: !/\b(challenge|problem|issue|bug|difficulty|risk)\b/i.test(transcript),
+      question: `In your ${projectTopic} work, what was the biggest challenge you faced, and how did you solve it step by step?`
+    },
+    {
+      test: !/\b(i built|i designed|i created|i implemented|my contribution|i used)\b/i.test(transcript),
+      question: `What exactly was your personal contribution in ${projectTopic}, and which part did you build or improve yourself?`
+    },
+    {
+      test: matchedKeywords.length < 3,
+      question: `Your answer needs stronger ${roleName.toLowerCase()} signals. Can you explain your project again using role keywords like ${role.keywords.slice(0, 4).join(", ")}?`
+    },
+    {
+      test: true,
+      question: `If an interviewer asks you to go deeper, how would you connect ${projectTopic} with ${missingSkill} and prove that you are ready for a ${roleName} role?`
+    }
+  ];
+
+  const available = weakSignals.filter((signal) => signal.test).map((signal) => signal.question);
+  return available[generatedCount % available.length];
+}
+
+function extractImportantWords(words, roleKeywords) {
+  const stopWords = new Set([
+    "about", "after", "also", "because", "before", "between", "could", "during", "every", "from", "have", "help",
+    "into", "like", "more", "that", "their", "there", "these", "this", "through", "using", "very", "what", "when",
+    "where", "which", "with", "would", "your", "project", "answer", "interview", "student", "students"
+  ]);
+  const counts = words.reduce((map, word) => {
+    const key = word.toLowerCase();
+    if (stopWords.has(key)) return map;
+    map[key] = (map[key] || 0) + 1 + (roleKeywords.includes(key) ? 2 : 0);
+    return map;
+  }, {});
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([word]) => word)
+    .slice(0, 5);
 }
 
 function setQuestion(index) {
@@ -1055,7 +1226,10 @@ function getActiveRole() {
 }
 
 function getQuestions() {
-  return getActiveRole().questions;
+  return [
+    ...getActiveRole().questions,
+    ...(state.generatedQuestions[els.roleSelect.value] || [])
+  ];
 }
 
 function showLastVideo() {
