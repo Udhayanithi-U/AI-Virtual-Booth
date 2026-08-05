@@ -322,50 +322,106 @@ function generatePersonalizedQuestion() {
   els.statusText.textContent = transcript ? "AI follow-up generated" : "Role question generated";
   setFeedback([
     transcript
-      ? "AI created this follow-up from your own answer, so practice it like an interviewer is asking deeper about your project."
+      ? "AI listened to your answer pattern and generated a realistic interviewer follow-up from the weakest or most interesting point."
       : "No transcript was available, so AI generated a strong role-based interview question.",
-    "Answer this question next to improve depth, confidence, and role-specific communication."
+    "Answer this next like a real interview: give a direct point, technical proof, result, and learning."
   ], "Question ready");
 }
 
 function buildPersonalizedQuestion(transcript, role, roleName, generatedCount) {
+  if (!transcript) {
+    return `From your point of view, walk me through one ${roleName.toLowerCase()} project you would show in an interview. What problem did it solve, what exactly did you do, and what result did you achieve?`;
+  }
+
+  const profile = buildAnswerProfile(transcript, role, roleName);
+  const interviewerFollowUps = [
+    {
+      priority: !profile.hasClearProject,
+      question: `I heard your answer, but I still do not have a clear project example. Can you choose one specific ${roleName.toLowerCase()} project and explain the problem, your work, and the final outcome?`
+    },
+    {
+      priority: profile.hasProject && !profile.hasContribution,
+      question: `You mentioned ${profile.topic}, but I want to understand your ownership. What exactly did you personally build, design, analyze, debug, or improve in that work?`
+    },
+    {
+      priority: profile.hasProject && !profile.hasTechnicalDepth,
+      question: `Let us go one level deeper technically. In ${profile.topic}, which tool, concept, data structure, API, database, or method did you use, and why was it the right choice?`
+    },
+    {
+      priority: profile.hasProject && !profile.hasChallenge,
+      question: `In a real project there is usually a blocker. What was the most difficult challenge in ${profile.topic}, and how did you handle it?`
+    },
+    {
+      priority: profile.hasProject && !profile.hasResult,
+      question: `You explained the work, but an interviewer will expect impact. What changed after ${profile.topic} was completed, and how would you measure the result?`
+    },
+    {
+      priority: profile.hasProject && !profile.hasLearning,
+      question: `What did you learn from ${profile.topic}, and what would you do differently if you rebuilt it today?`
+    },
+    {
+      priority: profile.roleRelevance < 3,
+      question: `I want to connect your answer more strongly to the ${roleName} role. Can you explain the same experience using role-specific points like ${profile.suggestedKeywords.join(", ")}?`
+    },
+    {
+      priority: profile.hasManyFillers || profile.isShortAnswer,
+      question: `Your answer needs more structure. Can you answer again in this order: problem, your action, technical decision, result, and learning?`
+    },
+    {
+      priority: profile.hasResult && profile.hasTechnicalDepth,
+      question: `Good, now imagine I challenge your decision. Why did you choose that approach in ${profile.topic}, and what alternative approach did you consider?`
+    },
+    {
+      priority: true,
+      question: `If I selected you for the next round, what part of ${profile.topic} would you confidently explain on a whiteboard, and what would you improve next?`
+    }
+  ];
+
+  const priorityQuestions = interviewerFollowUps.filter((item) => item.priority).map((item) => item.question);
+  return priorityQuestions[generatedCount % priorityQuestions.length];
+}
+
+function buildAnswerProfile(transcript, role, roleName) {
   const text = transcript.toLowerCase();
   const words = transcript.match(/\b[a-zA-Z][a-zA-Z0-9+-]{2,}\b/g) || [];
   const importantWords = extractImportantWords(words, role.keywords);
   const matchedKeywords = role.keywords.filter((keyword) => text.includes(keyword));
   const missingKeywords = role.keywords.filter((keyword) => !text.includes(keyword));
-  const projectTopic = importantWords[0] || matchedKeywords[0] || role.keywords[0] || "your project";
-  const missingSkill = missingKeywords[0] || role.keywords[1] || "technical depth";
+  const projectHints = extractProjectHints(transcript);
+  const topic = projectHints[0] || importantWords[0] || matchedKeywords[0] || `${roleName.toLowerCase()} work`;
 
-  if (!transcript) {
-    return `From your point of view, explain one ${roleName.toLowerCase()} project you would proudly show in an interview. What problem did it solve, what did you build, and what was the result?`;
-  }
+  return {
+    topic,
+    hasClearProject: /\b(project|app|website|dashboard|system|model|api|database|portfolio|booth|tool|platform)\b/i.test(transcript),
+    hasProject: /\b(project|app|website|dashboard|system|model|api|database|portfolio|booth|tool|platform|work)\b/i.test(transcript),
+    hasContribution: /\b(i built|i designed|i created|i implemented|i developed|i analyzed|i deployed|i tested|i fixed|my contribution|my role|i used)\b/i.test(transcript),
+    hasTechnicalDepth: new RegExp(`\\b(${role.keywords.join("|")}|html|css|javascript|sql|api|database|server|cloud|security|algorithm|testing|react|node|excel|chart|model)\\b`, "i").test(transcript),
+    hasChallenge: /\b(challenge|problem|issue|bug|error|difficulty|risk|blocked|failed|slow|conflict)\b/i.test(transcript),
+    hasResult: /\b(result|impact|improved|reduced|increased|outcome|solved|saved|faster|better|accurate|learned)\b/i.test(transcript),
+    hasLearning: /\b(learned|learning|next time|improve|differently|mistake|experience)\b/i.test(transcript),
+    hasManyFillers: countFillers(transcript) >= 4,
+    isShortAnswer: words.length < 55,
+    roleRelevance: matchedKeywords.length,
+    suggestedKeywords: (missingKeywords.length ? missingKeywords : role.keywords).slice(0, 4)
+  };
+}
 
-  const weakSignals = [
-    {
-      test: !/\b(result|impact|improved|reduced|increased|outcome|learned)\b/i.test(transcript),
-      question: `You explained ${projectTopic}, but the result was not very clear. What measurable impact, learning, or outcome did your work create?`
-    },
-    {
-      test: !/\b(challenge|problem|issue|bug|difficulty|risk)\b/i.test(transcript),
-      question: `In your ${projectTopic} work, what was the biggest challenge you faced, and how did you solve it step by step?`
-    },
-    {
-      test: !/\b(i built|i designed|i created|i implemented|my contribution|i used)\b/i.test(transcript),
-      question: `What exactly was your personal contribution in ${projectTopic}, and which part did you build or improve yourself?`
-    },
-    {
-      test: matchedKeywords.length < 3,
-      question: `Your answer needs stronger ${roleName.toLowerCase()} signals. Can you explain your project again using role keywords like ${role.keywords.slice(0, 4).join(", ")}?`
-    },
-    {
-      test: true,
-      question: `If an interviewer asks you to go deeper, how would you connect ${projectTopic} with ${missingSkill} and prove that you are ready for a ${roleName} role?`
-    }
+function extractProjectHints(transcript) {
+  const hints = [];
+  const patterns = [
+    /\b(?:built|created|designed|developed|made|implemented)\s+(?:a|an|the|my)?\s*([a-z0-9\s-]{3,42}?(?:app|website|dashboard|system|project|tool|booth|platform|api|model))/gi,
+    /\b(?:project|work)\s+(?:is|was|called|named)?\s*([a-z0-9\s-]{3,36})/gi
   ];
 
-  const available = weakSignals.filter((signal) => signal.test).map((signal) => signal.question);
-  return available[generatedCount % available.length];
+  patterns.forEach((pattern) => {
+    let match = pattern.exec(transcript);
+    while (match && hints.length < 3) {
+      hints.push(sanitizeTranscript(match[1]).toLowerCase());
+      match = pattern.exec(transcript);
+    }
+  });
+
+  return hints;
 }
 
 function extractImportantWords(words, roleKeywords) {
