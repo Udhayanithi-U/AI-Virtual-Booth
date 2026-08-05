@@ -163,6 +163,8 @@ const extraRoleQuestions = {
 const state = {
   activeQuestionIndex: 0,
   generatedQuestions: {},
+  askedQuestions: {},
+  interviewTurns: {},
   stream: null,
   recognition: null,
   audioContext: null,
@@ -311,41 +313,132 @@ function generatePersonalizedQuestion() {
   const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript || getTypedTranscript());
   const role = getActiveRole();
   const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
+  state.interviewTurns[roleKey] = (state.interviewTurns[roleKey] || 0) + 1;
   const generated = state.generatedQuestions[roleKey] || [];
-  const question = buildPersonalizedQuestion(transcript, role, roleName, generated.length);
+  const turn = state.interviewTurns[roleKey];
+  const difficulty = getInterviewDifficulty(turn);
+  const questionType = getInterviewQuestionType(turn, transcript);
+  const question = buildPersonalizedQuestion(transcript, role, roleName, generated.length, {
+    difficulty,
+    questionType,
+    turn
+  });
 
   state.generatedQuestions[roleKey] = [question, ...generated]
     .filter((item, index, list) => list.indexOf(item) === index)
     .slice(0, 8);
+  state.askedQuestions[roleKey] = [...(state.askedQuestions[roleKey] || []), question].slice(-20);
   renderQuestions();
   setQuestion(role.questions.length);
-  els.statusText.textContent = transcript ? "AI follow-up generated" : "Role question generated";
+  els.statusText.textContent = `${capitalize(difficulty)} ${questionType} question generated`;
   setFeedback([
     transcript
-      ? "AI listened to your answer pattern and generated a realistic interviewer follow-up from the weakest or most interesting point."
-      : "No transcript was available, so AI generated a strong role-based interview question.",
-    "Answer this next like a real interview: give a direct point, technical proof, result, and learning."
+      ? `AI generated a realistic ${questionType} follow-up from your previous answer. Difficulty: ${difficulty}.`
+      : `No transcript was available, so AI generated a ${difficulty} ${questionType} question for the selected role.`,
+    "It avoids recently asked questions and becomes harder as the interview progresses."
   ], "Question ready");
 }
 
-function buildPersonalizedQuestion(transcript, role, roleName, generatedCount) {
+function buildPersonalizedQuestion(transcript, role, roleName, generatedCount, options = {}) {
+  const difficulty = options.difficulty || "medium";
+  const questionType = options.questionType || "technical";
+  const roleKey = els.roleSelect.value;
+  const asked = new Set(state.askedQuestions[roleKey] || []);
+
   if (!transcript) {
-    return `From your point of view, walk me through one ${roleName.toLowerCase()} project you would show in an interview. What problem did it solve, what exactly did you do, and what result did you achieve?`;
+    return pickNonRepeatedQuestion(buildFreshRoleQuestions(role, roleName, difficulty, questionType), asked, generatedCount);
   }
 
   const profile = buildAnswerProfile(transcript, role, roleName);
-  const interviewerFollowUps = [
+  const interviewerFollowUps = buildInterviewerFollowUps(profile, role, roleName, difficulty, questionType);
+  const priorityQuestions = interviewerFollowUps.filter((item) => item.priority).map((item) => item.question);
+  return pickNonRepeatedQuestion(priorityQuestions, asked, generatedCount);
+}
+
+function buildFreshRoleQuestions(role, roleName, difficulty, questionType) {
+  const roleLabel = roleName.toLowerCase();
+  const keywordText = role.keywords.slice(0, 4).join(", ");
+  const questions = {
+    technical: {
+      easy: [
+        `Explain one ${roleLabel} concept you are comfortable with and where you used it.`,
+        `Walk me through a simple project related to ${roleLabel}. What did you build?`
+      ],
+      medium: [
+        `Describe a ${roleLabel} project using ${keywordText}. What technical decisions did you make?`,
+        `How would you improve the quality, performance, or reliability of one project you built?`
+      ],
+      hard: [
+        `Design a production-ready version of your best ${roleLabel} project. What architecture, risks, and tradeoffs would you consider?`,
+        `If your ${roleLabel} solution failed for 1,000 users, how would you diagnose and fix it?`
+      ]
+    },
+    behavioral: {
+      easy: [
+        `Tell me about yourself from the point of view of a ${roleLabel} candidate.`,
+        `Describe a time you learned a new skill for a project.`
+      ],
+      medium: [
+        `Tell me about a time you received feedback on your work. What changed after that?`,
+        `Describe a team situation where communication affected the project result.`
+      ],
+      hard: [
+        `Tell me about a time your decision was challenged. How did you defend or change your approach?`,
+        `Describe a failure in your work and the concrete process improvement you made after it.`
+      ]
+    },
+    situational: {
+      easy: [
+        `If you are assigned a new ${roleLabel} task tomorrow, how would you start?`,
+        `If you do not understand a requirement, what would you do first?`
+      ],
+      medium: [
+        `If your project demo breaks during an interview, how would you explain and recover from it?`,
+        `If a teammate disagrees with your solution, how would you handle the discussion?`
+      ],
+      hard: [
+        `If your solution works locally but fails after deployment, how would you isolate the root cause?`,
+        `If you had one week to make this project industry-ready, what would you prioritize and why?`
+      ]
+    },
+    hr: {
+      easy: [
+        `Why are you interested in the ${roleLabel} role?`,
+        `What is one strength that makes you suitable for this role?`
+      ],
+      medium: [
+        `Why should a company choose you over another entry-level ${roleLabel} candidate?`,
+        `Where do you need improvement before joining a professional team?`
+      ],
+      hard: [
+        `If you are rejected after a technical round, how would you analyze the gap and improve?`,
+        `What career direction do you want in ${roleLabel}, and how does your project work prove it?`
+      ]
+    }
+  };
+
+  return questions[questionType]?.[difficulty] || questions.technical.medium;
+}
+
+function buildInterviewerFollowUps(profile, role, roleName, difficulty, questionType) {
+  const technicalDepth = difficulty === "hard"
+    ? `architecture, tradeoffs, failure cases, and scalability`
+    : difficulty === "medium"
+      ? `the technical choice and why it fits the problem`
+      : `the basic concept and how you used it`;
+
+  const commonFollowUps = [
     {
       priority: !profile.hasClearProject,
-      question: `I heard your answer, but I still do not have a clear project example. Can you choose one specific ${roleName.toLowerCase()} project and explain the problem, your work, and the final outcome?`
+      question: `I heard your answer, but I still do not have a clear project example. Choose one specific ${roleName.toLowerCase()} project and explain the problem, your work, and the final outcome.`
     },
     {
       priority: profile.hasProject && !profile.hasContribution,
-      question: `You mentioned ${profile.topic}, but I want to understand your ownership. What exactly did you personally build, design, analyze, debug, or improve in that work?`
+      question: `You mentioned ${profile.topic}. What exactly was your personal ownership, and how can I separate your contribution from the team’s contribution?`
     },
     {
       priority: profile.hasProject && !profile.hasTechnicalDepth,
-      question: `Let us go one level deeper technically. In ${profile.topic}, which tool, concept, data structure, API, database, or method did you use, and why was it the right choice?`
+      question: `Let us go deeper technically. In ${profile.topic}, explain ${technicalDepth}.`
     },
     {
       priority: profile.hasProject && !profile.hasChallenge,
@@ -353,7 +446,7 @@ function buildPersonalizedQuestion(transcript, role, roleName, generatedCount) {
     },
     {
       priority: profile.hasProject && !profile.hasResult,
-      question: `You explained the work, but an interviewer will expect impact. What changed after ${profile.topic} was completed, and how would you measure the result?`
+      question: `You explained the work, but I need impact. What changed after ${profile.topic}, and what metric or evidence proves it worked?`
     },
     {
       priority: profile.hasProject && !profile.hasLearning,
@@ -377,8 +470,34 @@ function buildPersonalizedQuestion(transcript, role, roleName, generatedCount) {
     }
   ];
 
-  const priorityQuestions = interviewerFollowUps.filter((item) => item.priority).map((item) => item.question);
-  return priorityQuestions[generatedCount % priorityQuestions.length];
+  const typeSpecific = {
+    technical: [
+      {
+        priority: true,
+        question: `Technically, what was the most important decision in ${profile.topic}, and how would you justify it to a senior ${roleName}?`
+      }
+    ],
+    behavioral: [
+      {
+        priority: true,
+        question: `Tell me about your behavior during ${profile.topic}: how did you manage pressure, feedback, or collaboration?`
+      }
+    ],
+    situational: [
+      {
+        priority: true,
+        question: `Suppose ${profile.topic} fails during a live demo. What would you check first, what would you tell the panel, and how would you recover?`
+      }
+    ],
+    hr: [
+      {
+        priority: true,
+        question: `Based on ${profile.topic}, why should I believe you are ready for a ${roleName} role now?`
+      }
+    ]
+  };
+
+  return [...commonFollowUps, ...(typeSpecific[questionType] || typeSpecific.technical)];
 }
 
 function buildAnswerProfile(transcript, role, roleName) {
@@ -422,6 +541,30 @@ function extractProjectHints(transcript) {
   });
 
   return hints;
+}
+
+function getInterviewDifficulty(turn) {
+  if (turn <= 2) return "easy";
+  if (turn <= 5) return "medium";
+  return "hard";
+}
+
+function getInterviewQuestionType(turn, transcript) {
+  const rotation = transcript
+    ? ["technical", "behavioral", "situational", "technical", "hr"]
+    : ["technical", "behavioral", "situational", "hr"];
+  return rotation[(turn - 1) % rotation.length];
+}
+
+function pickNonRepeatedQuestion(questions, asked, seed) {
+  const safeQuestions = questions.length ? questions : ["Tell me about one project and explain your contribution, technical decision, result, and learning."];
+  const fresh = safeQuestions.filter((question) => !asked.has(question));
+  const pool = fresh.length ? fresh : safeQuestions;
+  return pool[seed % pool.length];
+}
+
+function capitalize(value) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "";
 }
 
 function extractImportantWords(words, roleKeywords) {
