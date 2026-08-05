@@ -1571,20 +1571,61 @@ function renderPracticeHistory() {
   `;
 
   state.practiceHistory.forEach((attempt, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "history-item";
-    button.dataset.historyId = attempt.id;
-    button.innerHTML = `
+    const card = document.createElement("article");
+    card.className = "history-item";
+    card.dataset.historyId = attempt.id;
+    card.innerHTML = `
       <span class="history-rank">#${index + 1}</span>
       <span>
         <strong>${escapeHtml(attempt.roleName)} · ${attempt.metrics.confidence}%</strong>
         <small>${formatHistoryDate(attempt.createdAt)} · ${attempt.metrics.pace || "--"} wpm · ${attempt.metrics.clarity}% clarity · ${attempt.metrics.wbm || "--"}% WBM</small>
       </span>
+      <button class="history-delete" type="button" aria-label="Delete this practice history" title="Delete this practice">×</button>
     `;
-    button.addEventListener("click", () => selectHistoryAttempt(attempt.id));
-    els.historyList.appendChild(button);
+    card.addEventListener("click", () => selectHistoryAttempt(attempt.id));
+    card.querySelector(".history-delete").addEventListener("click", (event) => {
+      event.stopPropagation();
+      deletePracticeAttempt(attempt.id);
+    });
+    els.historyList.appendChild(card);
   });
+}
+
+async function deletePracticeAttempt(id) {
+  const nextHistory = state.practiceHistory.filter((attempt) => attempt.id !== id);
+  const deletedSelectedPractice = state.selectedPracticeId === id;
+
+  try {
+    await writePracticeAttempts(nextHistory);
+  } catch (error) {
+    els.statusText.textContent = "Deleted for this session only";
+  }
+
+  state.practiceHistory = nextHistory;
+  if (deletedSelectedPractice) {
+    clearSelectedPractice();
+  }
+  renderPracticeHistory();
+  const nextSelectedId = deletedSelectedPractice ? state.practiceHistory[0]?.id : state.selectedPracticeId;
+  if (nextSelectedId) {
+    selectHistoryAttempt(nextSelectedId);
+  } else {
+    els.videoReviewNote.textContent = "Your last 5 practice attempts stay here. Review the video and score result before the next attempt.";
+    els.historySummary.innerHTML = "<strong>No saved practices yet.</strong><span>Finish one recorded answer to save the video and result here.</span>";
+    els.statusText.textContent = "Practice history deleted";
+  }
+}
+
+function clearSelectedPractice() {
+  state.selectedPracticeId = null;
+  els.generateReportBtn.disabled = true;
+  els.reviewVideo.pause();
+  els.reviewVideo.removeAttribute("src");
+  els.reviewVideo.load();
+  if (state.activeHistoryVideoUrl) {
+    URL.revokeObjectURL(state.activeHistoryVideoUrl);
+    state.activeHistoryVideoUrl = null;
+  }
 }
 
 function selectHistoryAttempt(id) {

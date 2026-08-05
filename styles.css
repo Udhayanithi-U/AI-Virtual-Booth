@@ -1045,8 +1045,9 @@ video,
 }
 
 .history-item {
+  position: relative;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   gap: 10px;
   align-items: start;
   min-height: 92px;
@@ -1096,6 +1097,29 @@ video,
   font-size: 0.76rem;
   font-weight: 800;
   line-height: 1.45;
+}
+
+.history-delete {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+  font-size: 1.1rem;
+  font-weight: 1000;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.history-delete:hover {
+  transform: scale(1.08);
+  border-color: rgba(248, 113, 113, 0.82);
+  background: rgba(239, 68, 68, 0.28);
+  color: #ffffff;
 }
 
 @keyframes cubeSpin {
