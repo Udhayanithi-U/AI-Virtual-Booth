@@ -139,6 +139,49 @@
                 </div>
               </div>
             </article>
+
+            <section class="feedback-grid compact-feedback">
+              <article class="feedback-panel">
+                <div class="panel-header">
+                  <h2>AI Feedback</h2>
+                  <span id="feedbackBadge">Not analyzed</span>
+                </div>
+                <div class="breakdown" aria-label="Score breakdown">
+                  <div>
+                    <span>Pace control</span>
+                    <div class="bar"><i id="paceBar"></i></div>
+                  </div>
+                  <div>
+                    <span>Confidence cues</span>
+                    <div class="bar"><i id="confidenceBar"></i></div>
+                  </div>
+                  <div>
+                    <span>Answer structure</span>
+                    <div class="bar"><i id="clarityBar"></i></div>
+                  </div>
+                  <div>
+                    <span>Role relevance</span>
+                    <div class="bar"><i id="roleBar"></i></div>
+                  </div>
+                  <div>
+                    <span>WBM: word balance</span>
+                    <div class="bar"><i id="wbmBar"></i></div>
+                  </div>
+                  <div>
+                    <span>Body language</span>
+                    <div class="bar"><i id="bodyBar"></i></div>
+                  </div>
+                  <div>
+                    <span>Tone stability</span>
+                    <div class="bar"><i id="toneBar"></i></div>
+                  </div>
+                </div>
+                <ul id="feedbackList">
+                  <li>Start the camera and answer the selected engineering placement question.</li>
+                  <li>The app will estimate pace, tone stability, filler words, clarity, and confidence cues.</li>
+                </ul>
+              </article>
+            </section>
           </div>
 
           <div class="metrics-panel">
@@ -203,49 +246,6 @@
           <video id="reviewVideo" controls playsinline></video>
           <div class="history-summary" id="historySummary" aria-live="polite"></div>
           <div class="history-list" id="historyList"></div>
-        </section>
-
-        <section class="feedback-grid">
-          <article class="feedback-panel">
-            <div class="panel-header">
-              <h2>AI Feedback</h2>
-              <span id="feedbackBadge">Not analyzed</span>
-            </div>
-            <div class="breakdown" aria-label="Score breakdown">
-              <div>
-                <span>Pace control</span>
-                <div class="bar"><i id="paceBar"></i></div>
-              </div>
-              <div>
-                <span>Confidence cues</span>
-                <div class="bar"><i id="confidenceBar"></i></div>
-              </div>
-              <div>
-                <span>Answer structure</span>
-                <div class="bar"><i id="clarityBar"></i></div>
-              </div>
-              <div>
-                <span>Role relevance</span>
-                <div class="bar"><i id="roleBar"></i></div>
-              </div>
-              <div>
-                <span>WBM: word balance</span>
-                <div class="bar"><i id="wbmBar"></i></div>
-              </div>
-              <div>
-                <span>Body language</span>
-                <div class="bar"><i id="bodyBar"></i></div>
-              </div>
-              <div>
-                <span>Tone stability</span>
-                <div class="bar"><i id="toneBar"></i></div>
-              </div>
-            </div>
-            <ul id="feedbackList">
-              <li>Start the camera and answer the selected engineering placement question.</li>
-              <li>The app will estimate pace, tone stability, filler words, clarity, and confidence cues.</li>
-            </ul>
-          </article>
         </section>
 
         <section class="ai-engine-grid" aria-label="AI analysis engine">
