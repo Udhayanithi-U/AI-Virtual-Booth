@@ -182,6 +182,22 @@ h1 {
   font-weight: 800;
 }
 
+.role-panel input[type="file"] {
+  width: 100%;
+  border: 1px dashed rgba(103, 232, 249, 0.35);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(5, 9, 20, 0.46);
+  color: #dbeafe;
+}
+
+.upload-hint {
+  margin: 0;
+  color: #aebdd3;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .role-panel p {
   margin: 0;
   color: #b9c7dc;
@@ -220,8 +236,8 @@ h1 {
 .stage {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 28px;
+  gap: 16px;
+  padding: 22px;
 }
 
 .ai-strip {
@@ -438,8 +454,14 @@ h1 {
 
 .interview-grid {
   display: grid;
-  grid-template-columns: minmax(380px, 1.35fr) minmax(280px, 0.65fr);
-  gap: 22px;
+  grid-template-columns: minmax(420px, 1.35fr) minmax(300px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.practice-column {
+  display: grid;
+  gap: 14px;
 }
 
 .camera-panel,
@@ -463,7 +485,7 @@ h1 {
 .video-frame {
   position: relative;
   overflow: hidden;
-  min-height: 430px;
+  min-height: 360px;
   background: #050914;
 }
 
@@ -471,11 +493,20 @@ video,
 .camera-placeholder {
   width: 100%;
   aspect-ratio: 16 / 9;
-  min-height: 430px;
+  min-height: 360px;
   object-fit: cover;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(16, 185, 129, 0.16)),
     #050914;
+}
+
+#bodyCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .camera-placeholder {
@@ -549,7 +580,7 @@ video,
 .camera-controls {
   display: flex;
   gap: 12px;
-  padding: 18px;
+  padding: 14px;
   background: rgba(18, 25, 40, 0.94);
 }
 
@@ -654,14 +685,14 @@ video,
 
 .feedback-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
-  gap: 22px;
+  grid-template-columns: 1fr;
+  gap: 16px;
 }
 
 .ai-engine-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
-  gap: 22px;
+  gap: 16px;
 }
 
 .engine-panel {
@@ -806,6 +837,18 @@ video,
 
 .transcript-empty {
   color: var(--muted) !important;
+}
+
+.grammar-mark {
+  border-bottom: 3px wavy rgba(248, 113, 113, 0.95);
+  color: #fecaca;
+  font-weight: 900;
+}
+
+.grammar-mark::after {
+  content: " ⚠";
+  color: #f87171;
+  font-size: 0.78em;
 }
 
 .manual-transcript {
@@ -1235,6 +1278,10 @@ video,
     grid-template-columns: 1fr;
   }
 
+  .practice-column {
+    gap: 12px;
+  }
+
   .history-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1282,7 +1329,7 @@ video,
   .video-frame,
   video,
   .camera-placeholder {
-    min-height: 300px;
+    min-height: 280px;
   }
 
   #waveform {
