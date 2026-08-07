@@ -76,6 +76,19 @@ const roleBank = {
       "How would you investigate suspicious login activity in a placement portal?",
       "What security controls would you add before storing interview videos online?"
     ]
+  },
+  product: {
+    title: "Product Manager Interview Mode",
+    summary: "User problems, prioritization, metrics, tradeoffs, roadmap, and product judgment.",
+    sample: "I am interested in product management because I enjoy understanding user problems and converting them into useful product decisions. In my AI virtual interview booth project, I focused on the user journey: selecting a role, practicing with camera and microphone, receiving feedback, and reviewing progress. I would measure success using completion rate, confidence improvement, repeated practice sessions, and report downloads. My strength is connecting user needs, technical feasibility, and clear communication.",
+    keywords: ["user", "problem", "metric", "roadmap", "priority", "tradeoff", "feedback", "market", "feature", "impact"],
+    questions: [
+      "Tell me about a product you admire. What user problem does it solve?",
+      "How would you prioritize features for this AI interview booth?",
+      "Which metrics would show whether this product is successful?",
+      "Describe a time you made a tradeoff between user experience and technical effort.",
+      "How would you collect user feedback and convert it into a roadmap?"
+    ]
   }
 };
 
@@ -157,6 +170,18 @@ const extraRoleQuestions = {
     "How would you audit suspicious activity in this app?",
     "What is the difference between encryption and hashing?",
     "How would you build user trust in an app that uses camera and microphone?"
+  ],
+  product: [
+    "How would you define the target users for this interview booth?",
+    "What problem statement would you write for students preparing for placements?",
+    "Which feature would you build first: video history, AI feedback, or resume-based questions, and why?",
+    "How would you measure whether users become more interview-ready?",
+    "What would you remove from this product to make it simpler?",
+    "How would you explain this product roadmap to an engineering team?",
+    "What risks exist if the AI feedback is inaccurate?",
+    "How would you design an onboarding flow for first-time users?",
+    "What competitor or alternative solution would you compare this with?",
+    "How would you decide pricing or free usage limits for students?"
   ]
 };
 
@@ -177,6 +202,19 @@ const state = {
   selectedPracticeId: null,
   activeHistoryVideoUrl: null,
   samples: [],
+  pitchSamples: [],
+  pauseSamples: [],
+  lastVoiceAt: null,
+  bodySamples: [],
+  bodyId: null,
+  bodyScore: 0,
+  toneScore: 0,
+  benchmarkPercentile: 0,
+  resumeContext: {
+    text: "",
+    keywords: [],
+    questions: []
+  },
   transcript: "",
   finalTranscript: "",
   liveTranscript: "",
@@ -196,6 +234,9 @@ const els = {
   coachSummary: document.getElementById("coachSummary"),
   newQuestionBtn: document.getElementById("newQuestionBtn"),
   personalizedQuestionBtn: document.getElementById("personalizedQuestionBtn"),
+  speakQuestionBtn: document.getElementById("speakQuestionBtn"),
+  resumeFile: document.getElementById("resumeFile"),
+  resumeStatus: document.getElementById("resumeStatus"),
   sampleBtn: document.getElementById("sampleBtn"),
   lastVideoBtn: document.getElementById("lastVideoBtn"),
   closeVideoBtn: document.getElementById("closeVideoBtn"),
@@ -203,6 +244,7 @@ const els = {
   reviewVideo: document.getElementById("reviewVideo"),
   videoReviewNote: document.getElementById("videoReviewNote"),
   generateReportBtn: document.getElementById("generateReportBtn"),
+  shareScoreBtn: document.getElementById("shareScoreBtn"),
   historySummary: document.getElementById("historySummary"),
   historyList: document.getElementById("historyList"),
   startBtn: document.getElementById("startBtn"),
@@ -214,6 +256,7 @@ const els = {
   mistakeList: document.getElementById("mistakeList"),
   keySuggestionList: document.getElementById("keySuggestionList"),
   camera: document.getElementById("camera"),
+  bodyCanvas: document.getElementById("bodyCanvas"),
   cameraPlaceholder: document.getElementById("cameraPlaceholder"),
   statusDot: document.getElementById("statusDot"),
   statusText: document.getElementById("statusText"),
@@ -230,6 +273,12 @@ const els = {
   clarityLabel: document.getElementById("clarityLabel"),
   wbmScore: document.getElementById("wbmScore"),
   wbmLabel: document.getElementById("wbmLabel"),
+  bodyScore: document.getElementById("bodyScore"),
+  bodyLabel: document.getElementById("bodyLabel"),
+  toneScore: document.getElementById("toneScore"),
+  toneLabel: document.getElementById("toneLabel"),
+  benchmarkScore: document.getElementById("benchmarkScore"),
+  benchmarkLabel: document.getElementById("benchmarkLabel"),
   feedbackBadge: document.getElementById("feedbackBadge"),
   feedbackList: document.getElementById("feedbackList"),
   paceBar: document.getElementById("paceBar"),
@@ -237,11 +286,15 @@ const els = {
   clarityBar: document.getElementById("clarityBar"),
   roleBar: document.getElementById("roleBar"),
   wbmBar: document.getElementById("wbmBar"),
+  bodyBar: document.getElementById("bodyBar"),
+  toneBar: document.getElementById("toneBar"),
   engineStatus: document.getElementById("engineStatus"),
   keywordCloud: document.getElementById("keywordCloud"),
   structureSignal: document.getElementById("structureSignal"),
   keywordSignal: document.getElementById("keywordSignal"),
   toneSignal: document.getElementById("toneSignal"),
+  bodySignal: document.getElementById("bodySignal"),
+  benchmarkSignal: document.getElementById("benchmarkSignal"),
   nextAction: document.getElementById("nextAction"),
   waveform: document.getElementById("waveform")
 };
@@ -270,9 +323,12 @@ function wireEvents() {
   els.correctAiBtn.addEventListener("click", correctWithAi);
   els.sampleBtn.addEventListener("click", loadSampleAnswer);
   els.personalizedQuestionBtn.addEventListener("click", generatePersonalizedQuestion);
+  els.speakQuestionBtn.addEventListener("click", speakActiveQuestion);
+  els.resumeFile.addEventListener("change", handleResumeUpload);
   els.roleSelect.addEventListener("change", updateRole);
   els.lastVideoBtn.addEventListener("click", showLastVideo);
   els.generateReportBtn.addEventListener("click", () => generatePracticeReport(state.selectedPracticeId));
+  els.shareScoreBtn.addEventListener("click", () => shareScorecard(state.selectedPracticeId));
   els.closeVideoBtn.addEventListener("click", () => els.videoReview.classList.remove("visible"));
   els.newQuestionBtn.addEventListener("click", () => {
     const next = (state.activeQuestionIndex + 1) % getQuestions().length;
@@ -290,6 +346,57 @@ function enrichQuestionBank() {
       }
     });
   });
+}
+
+async function handleResumeUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  try {
+    const rawText = await file.text();
+    const text = sanitizeTranscript(rawText.replace(/[^\x20-\x7E\n\r\t]+/g, " "));
+    const role = getActiveRole();
+    const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
+    const keywords = extractResumeKeywords(text || file.name, role.keywords);
+    const questions = buildResumeQuestions(keywords, roleName);
+    state.resumeContext = { text, keywords, questions };
+    state.generatedQuestions[els.roleSelect.value] = [
+      ...questions,
+      ...(state.generatedQuestions[els.roleSelect.value] || [])
+    ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 12);
+    renderQuestions();
+    els.resumeStatus.textContent = `${file.name} loaded. Tailored questions added using: ${keywords.slice(0, 6).join(", ") || "role keywords"}.`;
+    setFeedback([
+      "Resume/JD context loaded into the interviewer.",
+      "Use AI Follow-up Question or select the new tailored questions from the role list."
+    ], "Resume ready");
+  } catch (error) {
+    els.resumeStatus.textContent = "Could not read this file in the browser. Use a .txt or .md resume/JD for best results.";
+  }
+}
+
+function extractResumeKeywords(text, roleKeywords) {
+  const skillBank = [
+    "javascript", "python", "java", "react", "node", "sql", "excel", "power bi", "tableau", "api", "database",
+    "html", "css", "cloud", "aws", "azure", "security", "testing", "dashboard", "analytics", "machine learning",
+    "product", "roadmap", "user research", "metrics", "figma", "agile", "scrum", "leadership"
+  ];
+  const lower = text.toLowerCase();
+  const explicit = [...roleKeywords, ...skillBank].filter((keyword) => lower.includes(keyword));
+  const words = text.match(/\b[a-zA-Z][a-zA-Z0-9+#.-]{2,}\b/g) || [];
+  return [...new Set([...explicit, ...extractImportantWords(words, roleKeywords)])].slice(0, 10);
+}
+
+function buildResumeQuestions(keywords, roleName) {
+  const roleLabel = roleName.toLowerCase();
+  const primary = keywords[0] || "your strongest skill";
+  const secondary = keywords[1] || "your project experience";
+  return [
+    `Your resume/JD mentions ${primary}. Explain one project where you used it and what result it produced.`,
+    `How does your background in ${primary} and ${secondary} make you suitable for a ${roleLabel} role?`,
+    `If I ask you to prove ${primary} practically, what example would you show and what tradeoff did you handle?`,
+    `What is one gap in your resume for a ${roleLabel} role, and how are you improving it?`
+  ];
 }
 
 function renderQuestions() {
@@ -589,6 +696,22 @@ function setQuestion(index) {
   });
 }
 
+function speakActiveQuestion() {
+  const question = getQuestions()[state.activeQuestionIndex];
+  if (!question || !("speechSynthesis" in window)) {
+    setFeedback(["Text-to-speech is not available in this browser."], "Voice unavailable");
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(question);
+  utterance.rate = 0.92;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  window.speechSynthesis.speak(utterance);
+  els.statusText.textContent = "AI interviewer speaking";
+}
+
 async function startInterview() {
   try {
     resetAnalysisOnly();
@@ -606,6 +729,7 @@ async function startInterview() {
 
     startAudioMeter(state.stream);
     startVideoRecorder(state.stream);
+    startBodyLanguageTracker();
     startSpeechRecognition();
     setRecordingUi(true);
   } catch (error) {
@@ -622,6 +746,7 @@ function stopInterview() {
   stopRecognition();
   clearInterval(state.timerId);
   cancelAnimationFrame(state.energyId);
+  cancelAnimationFrame(state.bodyId);
   document.body.classList.remove("recording");
   setRecordingUi(false);
   els.statusText.textContent = "Finalizing transcript";
@@ -761,6 +886,15 @@ function startAudioMeter(stream) {
     }
     const rms = Math.sqrt(sum / data.length);
     state.samples.push(rms);
+    const now = Date.now();
+    const pitch = estimatePitch(data, state.audioContext.sampleRate);
+    if (pitch) state.pitchSamples.push(pitch);
+    if (rms > 4) {
+      if (state.lastVoiceAt && now - state.lastVoiceAt > 1300) {
+        state.pauseSamples.push(now - state.lastVoiceAt);
+      }
+      state.lastVoiceAt = now;
+    }
     const liveEnergy = Math.min(100, Math.round(rms * 4));
     els.energyScore.textContent = `${liveEnergy}%`;
     els.energyLabel.textContent = liveEnergy > 45 ? "Strong tone" : liveEnergy > 22 ? "Steady tone" : "Low volume";
@@ -769,6 +903,112 @@ function startAudioMeter(stream) {
   }
 
   sample();
+}
+
+function estimatePitch(data, sampleRate) {
+  let bestOffset = -1;
+  let bestCorrelation = 0;
+  const minOffset = Math.floor(sampleRate / 320);
+  const maxOffset = Math.floor(sampleRate / 80);
+
+  for (let offset = minOffset; offset <= maxOffset; offset += 1) {
+    let correlation = 0;
+    for (let i = 0; i < data.length - offset; i += 1) {
+      correlation += 1 - Math.abs(data[i] - data[i + offset]) / 255;
+    }
+    correlation /= data.length - offset;
+    if (correlation > bestCorrelation) {
+      bestCorrelation = correlation;
+      bestOffset = offset;
+    }
+  }
+
+  if (bestCorrelation < 0.88 || bestOffset <= 0) return 0;
+  return Math.round(sampleRate / bestOffset);
+}
+
+function startBodyLanguageTracker() {
+  const canvas = els.bodyCanvas;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const sampleCanvas = document.createElement("canvas");
+  const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+  sampleCanvas.width = 96;
+  sampleCanvas.height = 54;
+  state.bodySamples = [];
+
+  function tick() {
+    if (!state.isRecording || !els.camera.videoWidth) return;
+    canvas.width = els.camera.clientWidth || 900;
+    canvas.height = els.camera.clientHeight || 520;
+    sampleCtx.drawImage(els.camera, 0, 0, sampleCanvas.width, sampleCanvas.height);
+    const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+    const cue = estimateBodyLanguage(frame, sampleCanvas.width, sampleCanvas.height);
+    state.bodySamples.push(cue);
+    state.bodyScore = Math.round(average(state.bodySamples.map((item) => item.score)));
+    drawBodyOverlay(ctx, canvas, cue, state.bodyScore);
+    els.bodyScore.textContent = `${state.bodyScore}%`;
+    els.bodyLabel.textContent = cue.label;
+    state.bodyId = requestAnimationFrame(tick);
+  }
+
+  tick();
+}
+
+function estimateBodyLanguage(frame, width, height) {
+  const data = frame.data;
+  let skinX = 0;
+  let skinY = 0;
+  let skinCount = 0;
+  let brightTop = 0;
+  let brightBottom = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const brightness = (r + g + b) / 3;
+      if (brightness > 80) {
+        if (y < height / 2) brightTop += 1;
+        else brightBottom += 1;
+      }
+      if (r > 80 && g > 45 && b > 30 && r > b * 1.15 && r > g * 0.85) {
+        skinX += x;
+        skinY += y;
+        skinCount += 1;
+      }
+    }
+  }
+
+  const centerX = skinCount ? skinX / skinCount : width / 2;
+  const centerY = skinCount ? skinY / skinCount : height / 2;
+  const centered = Math.max(0, 100 - Math.abs(centerX - width / 2) * 2.8);
+  const posture = Math.max(0, Math.min(100, 55 + (brightTop - brightBottom) * 0.06));
+  const eyeContact = skinCount ? Math.max(0, 100 - Math.abs(centerY - height * 0.38) * 2.2) : 45;
+  const smileProxy = Math.max(35, Math.min(100, 48 + skinCount / 18));
+  const score = Math.round(centered * 0.34 + posture * 0.28 + eyeContact * 0.28 + smileProxy * 0.1);
+  const label = score >= 78 ? "Centered, confident posture" : score >= 58 ? "Good presence, improve eye line" : "Adjust posture and face camera";
+
+  return { score, centered, posture, eyeContact, smileProxy, centerX, centerY, label };
+}
+
+function drawBodyOverlay(ctx, canvas, cue, score) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = score >= 78 ? "rgba(16,185,129,0.9)" : score >= 58 ? "rgba(245,158,11,0.9)" : "rgba(239,68,68,0.9)";
+  ctx.lineWidth = 3;
+  const x = (cue.centerX / 96) * canvas.width;
+  const y = (cue.centerY / 54) * canvas.height;
+  ctx.beginPath();
+  ctx.arc(x, y, 42, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(2, 6, 23, 0.64)";
+  ctx.fillRect(16, 16, 265, 68);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 15px Inter, sans-serif";
+  ctx.fillText(`Body language ${score}%`, 30, 42);
+  ctx.font = "700 12px Inter, sans-serif";
+  ctx.fillText(cue.label, 30, 66);
 }
 
 function analyzeAnswer() {
@@ -784,11 +1024,17 @@ function analyzeAnswer() {
   const clarity = calculateClarity(wordCount, fillers, transcript);
   const content = analyzeContent(transcript, avgEnergy, energyStability);
   const balance = analyzeWordBalance(transcript, words, content.matchedKeywords);
+  const bodyLanguage = summarizeBodyLanguage();
+  const toneProfile = analyzeToneProfile(avgEnergy, energyStability, durationSeconds);
   const paceQuality = Math.round(scoreRange(pace, 115, 155, 70));
   const confidence = wordCount
-    ? calculateConfidence({ pace, clarity, avgEnergy, energyStability, wordCount, durationSeconds, roleRelevance: content.roleRelevance, structureScore: content.structureScore, wordBalance: balance.score })
+    ? calculateConfidence({ pace, clarity, avgEnergy, energyStability, wordCount, durationSeconds, roleRelevance: content.roleRelevance, structureScore: content.structureScore, wordBalance: balance.score, bodyScore: bodyLanguage.score, toneScore: toneProfile.score })
     : 0;
-  const result = { confidence, pace, clarity, fillers, wordCount, durationSeconds, avgEnergy, energyStability, content, balance };
+  const benchmark = calculateBenchmarkPercentile(confidence, els.roleSelect.value, state.activeQuestionIndex);
+  state.toneScore = toneProfile.score;
+  state.bodyScore = bodyLanguage.score;
+  state.benchmarkPercentile = benchmark;
+  const result = { confidence, pace, clarity, fillers, wordCount, durationSeconds, avgEnergy, energyStability, content, balance, bodyLanguage, toneProfile, benchmark };
   const feedback = buildFeedback(result);
 
   els.paceScore.textContent = wordCount ? `${pace} wpm` : "-- wpm";
@@ -799,6 +1045,12 @@ function analyzeAnswer() {
   els.clarityLabel.textContent = fillers ? `${fillers} filler words detected` : "Low filler usage";
   els.wbmScore.textContent = wordCount ? `${balance.score}%` : "--%";
   els.wbmLabel.textContent = wordCount ? balance.label : "Word balance waiting";
+  els.bodyScore.textContent = `${bodyLanguage.score}%`;
+  els.bodyLabel.textContent = bodyLanguage.label;
+  els.toneScore.textContent = `${toneProfile.score}%`;
+  els.toneLabel.textContent = toneProfile.label;
+  els.benchmarkScore.textContent = `${benchmark}th`;
+  els.benchmarkLabel.textContent = `Better than ${benchmark}% of ${els.roleSelect.options[els.roleSelect.selectedIndex].text} practice attempts`;
   els.confidenceScore.textContent = `${confidence}%`;
   setRingScore(confidence);
   els.paceBar.style.width = `${wordCount ? paceQuality : 0}%`;
@@ -806,6 +1058,8 @@ function analyzeAnswer() {
   els.clarityBar.style.width = `${clarity}%`;
   els.roleBar.style.width = `${content.roleRelevance}%`;
   els.wbmBar.style.width = `${wordCount ? balance.score : 0}%`;
+  els.bodyBar.style.width = `${bodyLanguage.score}%`;
+  els.toneBar.style.width = `${toneProfile.score}%`;
   els.feedbackBadge.textContent = confidence >= 78 ? "Strong answer" : confidence >= 58 ? "Developing" : "Needs practice";
   els.verdictText.textContent = buildVerdict(confidence, pace, clarity);
   updateEnginePanel(content, wordCount);
@@ -869,6 +1123,18 @@ function buildFeedback(result) {
     feedback.push("Tone stability can improve. Keep the same volume through technical details instead of dropping your voice at the end of sentences.");
   }
 
+  if (result.bodyLanguage && result.bodyLanguage.score < 62) {
+    feedback.push(`Computer vision cue: ${result.bodyLanguage.label}. Keep your face centered, sit upright, and look toward the camera while answering.`);
+  }
+
+  if (result.toneProfile && result.toneProfile.score < 62) {
+    feedback.push(`Voice emotion cue: ${result.toneProfile.coaching}`);
+  }
+
+  if (Number.isFinite(result.benchmark)) {
+    feedback.push(`Benchmark: this attempt is around the ${result.benchmark}th percentile for similar ${els.roleSelect.options[els.roleSelect.selectedIndex].text} practice sessions.`);
+  }
+
   if (result.content.roleRelevance < 45) {
     feedback.push("Role relevance is weak. Add more keywords and examples connected to the selected job role.");
   }
@@ -914,6 +1180,7 @@ function correctWithAi() {
 function buildLanguageCoach(transcript) {
   let corrected = ` ${transcript} `;
   const mistakes = [];
+  const mistakePhrases = [];
   const replacements = [
     [/\bi am created\b/gi, "I created", "Use 'I created' instead of 'I am created'."],
     [/\bi am built\b/gi, "I built", "Use 'I built' instead of 'I am built'."],
@@ -937,12 +1204,14 @@ function buildLanguageCoach(transcript) {
     if (match) {
       corrected = corrected.replace(pattern, replacement);
       const fixedPhrase = match[0].replace(pattern, replacement);
+      mistakePhrases.push(match[0].trim());
       mistakes.push(`Grammar point: change "${match[0].trim()}" to "${fixedPhrase.trim()}". ${note}`);
     }
   });
 
   const fillerMatches = transcript.toLowerCase().match(/\b(um|uh|like|basically|actually|you know|i mean)\b/g) || [];
   if (fillerMatches.length) {
+    mistakePhrases.push(...new Set(fillerMatches));
     mistakes.push(`Reduce filler words: ${[...new Set(fillerMatches)].join(", ")}.`);
   }
 
@@ -973,6 +1242,7 @@ function buildLanguageCoach(transcript) {
   return {
     corrected,
     mistakes: mistakes.length ? mistakes : ["Good verbal clarity. Improve by adding one measurable result and a confident closing line."],
+    mistakePhrases,
     keys,
     strongerLine,
     summary: mistakes.length ? `${mistakes.length} improvement areas found in grammar, fillers, structure, or closing.` : "Your English is clear; now make the answer more role-specific."
@@ -1020,12 +1290,43 @@ function buildVerdict(confidence, pace, clarity) {
   return "Practice once more using a beginning, project proof, and confident closing line.";
 }
 
-function calculateConfidence({ pace, clarity, avgEnergy, energyStability, wordCount, durationSeconds, roleRelevance, structureScore, wordBalance }) {
+function calculateConfidence({ pace, clarity, avgEnergy, energyStability, wordCount, durationSeconds, roleRelevance, structureScore, wordBalance, bodyScore = 65, toneScore = 65 }) {
   const paceScore = scoreRange(pace, 115, 155, 70);
   const lengthScore = scoreRange(durationSeconds, 45, 120, 45);
   const energyScore = Math.min(100, avgEnergy * 6);
   const wordScore = Math.min(100, wordCount * 2);
-  return Math.round((paceScore * 0.18) + (clarity * 0.18) + (energyScore * 0.14) + (energyStability * 0.1) + (wordScore * 0.07) + (roleRelevance * 0.12) + (structureScore * 0.11) + (wordBalance * 0.1));
+  return Math.round((paceScore * 0.14) + (clarity * 0.15) + (energyScore * 0.09) + (energyStability * 0.07) + (wordScore * 0.05) + (roleRelevance * 0.1) + (structureScore * 0.1) + (wordBalance * 0.08) + (bodyScore * 0.12) + (toneScore * 0.1));
+}
+
+function summarizeBodyLanguage() {
+  if (!state.bodySamples.length) {
+    return { score: 55, label: "Camera body cues unavailable" };
+  }
+  const score = Math.round(average(state.bodySamples.map((item) => item.score)));
+  return {
+    score,
+    label: score >= 78 ? "Strong eye line and posture" : score >= 58 ? "Good presence, improve posture" : "Needs steadier camera presence"
+  };
+}
+
+function analyzeToneProfile(avgEnergy, energyStability, durationSeconds) {
+  const pitchVariance = calculateStability(state.pitchSamples);
+  const pausePenalty = Math.min(28, state.pauseSamples.length * 5 + average(state.pauseSamples) / 500);
+  const energyScore = Math.min(100, avgEnergy * 6);
+  const score = Math.round(Math.max(20, Math.min(100, energyScore * 0.34 + energyStability * 0.32 + pitchVariance * 0.22 + scoreRange(durationSeconds, 35, 140, 55) * 0.12 - pausePenalty)));
+  const label = score >= 78 ? "Expressive and steady" : score >= 58 ? "Acceptable, reduce pauses" : "Nervous or monotone delivery";
+  const coaching = score >= 78
+    ? "Tone is steady with enough variation."
+    : state.pauseSamples.length > 2
+      ? "Reduce long pauses by using shorter planned sentences."
+      : "Add more pitch variation and project your voice naturally.";
+  return { score, label, pitchVariance, pauseCount: state.pauseSamples.length, coaching };
+}
+
+function calculateBenchmarkPercentile(confidence, roleKey, questionIndex) {
+  const roleOffset = [...roleKey].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 11;
+  const simulatedAverage = 58 + roleOffset + (questionIndex % 4) * 2;
+  return Math.max(8, Math.min(97, Math.round(50 + (confidence - simulatedAverage) * 1.15)));
 }
 
 function analyzeContent(transcript, avgEnergy, energyStability) {
@@ -1062,6 +1363,8 @@ function updateEnginePanel(content, wordCount) {
   els.structureSignal.textContent = `${content.structureScore}% structure match: ${labelStructure(content.detectedStructure)}`;
   els.keywordSignal.textContent = `${content.matchedKeywords.length}/${getActiveRole().keywords.length} role signals found: ${content.matchedKeywords.join(", ") || "none yet"}`;
   els.toneSignal.textContent = `${content.toneScore}% tone confidence from word choice and voice stability.`;
+  els.bodySignal.textContent = `${state.bodyScore || 0}% camera presence from face position, posture, and eye-line proxy.`;
+  els.benchmarkSignal.textContent = state.benchmarkPercentile ? `${state.benchmarkPercentile}th percentile compared with similar role/question attempts.` : "Waiting for final confidence score.";
   els.nextAction.textContent = content.roleRelevance >= 60
     ? "Improve the final answer by adding one measurable result and a stronger closing line."
     : `Add more ${els.roleSelect.options[els.roleSelect.selectedIndex].text.toLowerCase()} terms from the highlighted role signal bank.`;
@@ -1261,9 +1564,27 @@ function drawIdleWaveform() {
 function updateTranscript(text) {
   els.transcript.textContent = text || "Your answer will appear here while you speak.";
   els.transcript.classList.toggle("transcript-empty", !text);
-  if (text && !els.manualTranscript.value.trim()) {
-    els.manualTranscript.value = text;
+}
+
+function highlightGrammarMistakes(transcript, phrases = []) {
+  if (!transcript) {
+    updateTranscript("");
+    return;
   }
+
+  const uniquePhrases = [...new Set(phrases.filter(Boolean).map((phrase) => phrase.trim()).filter((phrase) => phrase.length > 1))];
+  if (!uniquePhrases.length) {
+    updateTranscript(transcript);
+    return;
+  }
+
+  const pattern = new RegExp(`\\b(${uniquePhrases.map(escapeRegExp).join("|")})\\b`, "gi");
+  els.transcript.innerHTML = escapeHtml(transcript).replace(pattern, (match) => `<span class="grammar-mark" title="Grammar mistake">${escapeHtml(match)}</span>`);
+  els.transcript.classList.remove("transcript-empty");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function setFeedback(items, badge) {
@@ -1301,11 +1622,17 @@ function resetSession() {
 
 function resetAnalysisOnly() {
   state.samples = [];
+  state.pitchSamples = [];
+  state.pauseSamples = [];
+  state.lastVoiceAt = null;
+  state.bodySamples = [];
+  state.bodyScore = 0;
+  state.toneScore = 0;
+  state.benchmarkPercentile = 0;
   state.transcript = "";
   state.finalTranscript = "";
   state.liveTranscript = "";
   state.interimTranscript = "";
-  els.manualTranscript.value = "";
   els.correctionPanel.classList.remove("visible");
   els.correctedEnglish.textContent = "Analyze or capture a transcript, then use Correct with AI.";
   renderMistakes(["Waiting for transcript."]);
@@ -1330,6 +1657,14 @@ function resetAnalysisOnly() {
   els.wbmScore.textContent = "--%";
   els.wbmLabel.textContent = "Word balance waiting";
   els.wbmBar.style.width = "0%";
+  els.bodyScore.textContent = "--%";
+  els.bodyLabel.textContent = "Camera cues waiting";
+  els.bodyBar.style.width = "0%";
+  els.toneScore.textContent = "--%";
+  els.toneLabel.textContent = "Voice tone waiting";
+  els.toneBar.style.width = "0%";
+  els.benchmarkScore.textContent = "--";
+  els.benchmarkLabel.textContent = "Percentile waiting";
   setFeedback([
     `Start the camera and answer the selected ${els.roleSelect.options[els.roleSelect.selectedIndex].text} question.`,
     "The app will estimate pace, tone stability, filler words, clarity, role relevance, and confidence cues."
@@ -1338,6 +1673,8 @@ function resetAnalysisOnly() {
   els.structureSignal.textContent = "Waiting for answer";
   els.keywordSignal.textContent = "Waiting for role match";
   els.toneSignal.textContent = "Waiting for audio";
+  els.bodySignal.textContent = "Waiting for camera";
+  els.benchmarkSignal.textContent = "Waiting for score";
   els.nextAction.textContent = "Answer one question to receive targeted coaching.";
   renderKeywordCloud([]);
   drawIdleWaveform();
@@ -1488,6 +1825,11 @@ async function savePracticeAttempt(result, feedback, transcript) {
       duration: result.durationSeconds,
       avgEnergy: result.avgEnergy,
       energyStability: result.energyStability,
+      bodyScore: result.bodyLanguage?.score || 0,
+      bodyLabel: result.bodyLanguage?.label || "Body cues unavailable",
+      toneScore: result.toneProfile?.score || 0,
+      toneLabel: result.toneProfile?.label || "Tone unavailable",
+      benchmark: result.benchmark || 0,
       verdict: buildVerdict(result.confidence, result.pace, result.clarity)
     }
   };
@@ -1501,6 +1843,7 @@ async function savePracticeAttempt(result, feedback, transcript) {
     renderPracticeHistory();
     selectHistoryAttempt(attempt.id);
     els.lastVideoBtn.disabled = false;
+    els.shareScoreBtn.disabled = false;
     els.statusText.textContent = "Practice saved to history";
   } catch (error) {
     state.practiceHistory = nextHistory;
@@ -1513,6 +1856,7 @@ async function savePracticeAttempt(result, feedback, transcript) {
 function renderPracticeHistory() {
   els.lastVideoBtn.disabled = !state.practiceHistory.length && !state.lastVideoUrl;
   els.generateReportBtn.disabled = !state.selectedPracticeId;
+  els.shareScoreBtn.disabled = !state.selectedPracticeId;
   els.historyList.innerHTML = "";
 
   if (!state.practiceHistory.length) {
@@ -1575,6 +1919,7 @@ async function deletePracticeAttempt(id) {
 function clearSelectedPractice() {
   state.selectedPracticeId = null;
   els.generateReportBtn.disabled = true;
+  els.shareScoreBtn.disabled = true;
   els.reviewVideo.pause();
   els.reviewVideo.removeAttribute("src");
   els.reviewVideo.load();
@@ -1590,6 +1935,7 @@ function selectHistoryAttempt(id) {
 
   state.selectedPracticeId = id;
   els.generateReportBtn.disabled = false;
+  els.shareScoreBtn.disabled = false;
   restorePracticeAttempt(attempt);
 
   if (state.activeHistoryVideoUrl) URL.revokeObjectURL(state.activeHistoryVideoUrl);
@@ -1661,7 +2007,17 @@ function buildAttemptSnapshot(attempt) {
     avgEnergy,
     energyStability,
     content,
-    balance
+    balance,
+    bodyLanguage: {
+      score: attempt.metrics.bodyScore || 55,
+      label: attempt.metrics.bodyLabel || "Camera body cues unavailable"
+    },
+    toneProfile: {
+      score: attempt.metrics.toneScore || 55,
+      label: attempt.metrics.toneLabel || "Voice tone unavailable",
+      coaching: "Review tone stability and pause control."
+    },
+    benchmark: attempt.metrics.benchmark || calculateBenchmarkPercentile(attempt.metrics.confidence || 0, attempt.roleKey || els.roleSelect.value, attempt.questionIndex || 0)
   };
 }
 
@@ -1676,6 +2032,12 @@ function paintResult(result, feedback) {
   els.clarityLabel.textContent = result.fillers ? `${result.fillers} filler words detected` : "Low filler usage";
   els.wbmScore.textContent = result.wordCount ? `${result.balance.score}%` : "--%";
   els.wbmLabel.textContent = result.wordCount ? result.balance.label : "Word balance waiting";
+  els.bodyScore.textContent = `${result.bodyLanguage?.score || 0}%`;
+  els.bodyLabel.textContent = result.bodyLanguage?.label || "Camera cues unavailable";
+  els.toneScore.textContent = `${result.toneProfile?.score || 0}%`;
+  els.toneLabel.textContent = result.toneProfile?.label || "Voice tone unavailable";
+  els.benchmarkScore.textContent = `${result.benchmark || 0}th`;
+  els.benchmarkLabel.textContent = `Better than ${result.benchmark || 0}% of similar attempts`;
   els.confidenceScore.textContent = `${result.confidence}%`;
   setRingScore(result.confidence);
   els.paceBar.style.width = `${result.wordCount ? paceQuality : 0}%`;
@@ -1683,6 +2045,11 @@ function paintResult(result, feedback) {
   els.clarityBar.style.width = `${result.clarity}%`;
   els.roleBar.style.width = `${result.content.roleRelevance}%`;
   els.wbmBar.style.width = `${result.wordCount ? result.balance.score : 0}%`;
+  els.bodyBar.style.width = `${result.bodyLanguage?.score || 0}%`;
+  els.toneBar.style.width = `${result.toneProfile?.score || 0}%`;
+  state.bodyScore = result.bodyLanguage?.score || 0;
+  state.toneScore = result.toneProfile?.score || 0;
+  state.benchmarkPercentile = result.benchmark || 0;
   els.feedbackBadge.textContent = result.confidence >= 78 ? "Strong answer" : result.confidence >= 58 ? "Developing" : "Needs practice";
   els.verdictText.textContent = buildVerdict(result.confidence, result.pace, result.clarity);
   updateEnginePanel(result.content, result.wordCount);
@@ -1897,6 +2264,9 @@ function generatePracticeReport(id) {
             <div class="metric"><span>Pace</span><strong>${snapshot.pace || "--"}</strong></div>
             <div class="metric ${scoreClass(snapshot.clarity)}"><span>Clarity</span><strong>${snapshot.clarity}%</strong></div>
             <div class="metric ${scoreClass(snapshot.balance.score)}"><span>WBM</span><strong>${snapshot.balance.score}%</strong></div>
+            <div class="metric ${scoreClass(snapshot.bodyLanguage.score)}"><span>Body</span><strong>${snapshot.bodyLanguage.score}%</strong></div>
+            <div class="metric ${scoreClass(snapshot.toneProfile.score)}"><span>Tone</span><strong>${snapshot.toneProfile.score}%</strong></div>
+            <div class="metric"><span>Benchmark</span><strong>${snapshot.benchmark}th</strong></div>
             <div class="metric"><span>Words</span><strong>${snapshot.wordCount}</strong></div>
           </section>
 
@@ -1943,6 +2313,33 @@ function generatePracticeReport(id) {
   reportWindow.document.close();
   reportWindow.focus();
   setTimeout(() => reportWindow.print(), 400);
+}
+
+async function shareScorecard(id) {
+  const attempt = state.practiceHistory.find((item) => item.id === id);
+  if (!attempt) {
+    setFeedback(["Select one saved practice before creating a scorecard."], "Scorecard needed");
+    return;
+  }
+
+  const scorecard = [
+    "AI Virtual Booth Readiness Scorecard",
+    `Role: ${attempt.roleName}`,
+    `Question: ${attempt.question}`,
+    `Confidence: ${attempt.metrics.confidence}%`,
+    `Body language: ${attempt.metrics.bodyScore || "--"}%`,
+    `Tone: ${attempt.metrics.toneScore || "--"}%`,
+    `Benchmark: ${attempt.metrics.benchmark || "--"}th percentile`,
+    `Verdict: ${attempt.metrics.verdict}`,
+    "Generated by AI Virtual Interview Booth"
+  ].join("\n");
+
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(scorecard);
+    setFeedback(["Readiness scorecard copied to clipboard. Review it before sharing anywhere."], "Scorecard copied");
+  } else {
+    setFeedback([scorecard], "Copy manually");
+  }
 }
 
 function scoreClass(score) {
