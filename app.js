@@ -213,7 +213,9 @@ const state = {
   resumeContext: {
     text: "",
     keywords: [],
-    questions: []
+    questions: [],
+    profile: null,
+    roleKey: ""
   },
   transcript: "",
   finalTranscript: "",
@@ -355,20 +357,30 @@ async function handleResumeUpload(event) {
   try {
     const rawText = await file.text();
     const text = sanitizeTranscript(rawText.replace(/[^\x20-\x7E\n\r\t]+/g, " "));
+    const readableText = isReadableResumeText(text);
     const role = getActiveRole();
+    const roleKey = els.roleSelect.value;
     const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
-    const keywords = extractResumeKeywords(text || file.name, role.keywords);
-    const questions = buildResumeQuestions(keywords, roleName);
-    state.resumeContext = { text, keywords, questions };
-    state.generatedQuestions[els.roleSelect.value] = [
+    const profile = buildCandidateProfile(text || file.name, role, roleName, file.name);
+    const keywords = profile.skills;
+    const questions = buildResumeQuestions(profile, roleName);
+    state.resumeContext = { text, keywords, questions, profile, roleKey };
+    state.generatedQuestions[roleKey] = [
       ...questions,
-      ...(state.generatedQuestions[els.roleSelect.value] || [])
-    ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 12);
+      ...(state.generatedQuestions[roleKey] || [])
+    ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 16);
+    state.askedQuestions[roleKey] = [];
     renderQuestions();
-    els.resumeStatus.textContent = `${file.name} loaded. Tailored questions added using: ${keywords.slice(0, 6).join(", ") || "role keywords"}.`;
+    setQuestion(0);
+    els.resumeStatus.textContent = readableText
+      ? `${file.name} loaded. Questions now auto-tailor to this candidate using: ${keywords.slice(0, 6).join(", ") || "role keywords"}.`
+      : `${file.name} loaded, but only limited readable text was found. For best candidate-specific questions, upload a .txt/.md resume or paste resume text into a text file.`;
     setFeedback([
-      "Resume/JD context loaded into the interviewer.",
-      "Use AI Follow-up Question or select the new tailored questions from the role list."
+      `Candidate-specific interview set generated for ${roleName}.`,
+      profile.projects.length
+        ? `The interviewer will ask from resume projects like ${profile.projects.slice(0, 2).join(", ")}.`
+        : "The interviewer will ask from detected skills, education, and role signals.",
+      "AI Follow-up Question will continue branching from the candidate resume and previous answer."
     ], "Resume ready");
   } catch (error) {
     els.resumeStatus.textContent = "Could not read this file in the browser. Use a .txt or .md resume/JD for best results.";
@@ -387,16 +399,91 @@ function extractResumeKeywords(text, roleKeywords) {
   return [...new Set([...explicit, ...extractImportantWords(words, roleKeywords)])].slice(0, 10);
 }
 
-function buildResumeQuestions(keywords, roleName) {
+function isReadableResumeText(text) {
+  const words = text.match(/\b[a-zA-Z][a-zA-Z0-9+#.-]{2,}\b/g) || [];
+  const uniqueWords = new Set(words.map((word) => word.toLowerCase()));
+  return words.length >= 35 && uniqueWords.size >= 18;
+}
+
+function buildCandidateProfile(text, role, roleName, fileName = "") {
+  const cleanText = sanitizeTranscript(text || "");
+  const lower = cleanText.toLowerCase();
+  const keywords = extractResumeKeywords(cleanText || fileName, role.keywords);
+  const projects = extractCandidateProjects(cleanText);
+  const education = extractCandidateSignals(cleanText, [
+    "bachelor", "b.tech", "be ", "engineering", "computer science", "information technology",
+    "college", "university", "degree", "diploma", "cgpa", "gpa"
+  ]);
+  const certifications = extractCandidateSignals(cleanText, [
+    "certification", "certified", "course", "internship", "workshop", "training", "hackathon"
+  ]);
+  const experience = extractCandidateSignals(cleanText, [
+    "intern", "internship", "freelance", "volunteer", "team lead", "developer", "analyst", "manager"
+  ]);
+  const achievements = extractCandidateSignals(cleanText, [
+    "winner", "award", "rank", "selected", "finalist", "published", "deployed", "improved", "reduced", "increased"
+  ]);
+
+  return {
+    text: cleanText,
+    roleName,
+    skills: keywords,
+    projects,
+    education,
+    certifications,
+    experience,
+    achievements,
+    hasResume: cleanText.length > 40,
+    seniority: /\b(intern|fresher|student|entry|graduate)\b/.test(lower) ? "entry-level" : "candidate",
+    focus: projects[0] || keywords[0] || `${roleName.toLowerCase()} readiness`
+  };
+}
+
+function extractCandidateProjects(text) {
+  const hints = extractProjectHints(text);
+  const lines = text.split(/\r?\n/)
+    .map((line) => sanitizeTranscript(line).trim())
+    .filter((line) => line.length > 8 && line.length < 110);
+  const projectLines = lines.filter((line) => /\b(project|app|website|dashboard|system|portfolio|booth|platform|api|model|analysis|prediction|management)\b/i.test(line));
+  const normalized = [...hints, ...projectLines]
+    .map((item) => item.replace(/^[•*\-\d.)\s]+/, "").trim())
+    .filter(Boolean);
+  return [...new Set(normalized)].slice(0, 4);
+}
+
+function extractCandidateSignals(text, signalWords) {
+  const lines = text.split(/\r?\n/)
+    .map((line) => sanitizeTranscript(line).trim())
+    .filter((line) => line.length > 4 && line.length < 130);
+  const matches = lines.filter((line) => signalWords.some((word) => line.toLowerCase().includes(word)));
+  return [...new Set(matches)].slice(0, 3);
+}
+
+function buildResumeQuestions(profile, roleName) {
   const roleLabel = roleName.toLowerCase();
-  const primary = keywords[0] || "your strongest skill";
-  const secondary = keywords[1] || "your project experience";
+  const skills = profile.skills.length ? profile.skills : ["your strongest skill", "your project experience"];
+  const primary = skills[0];
+  const secondary = skills[1] || "your project experience";
+  const project = profile.projects[0] || "your best resume project";
+  const secondProject = profile.projects[1] || project;
+  const education = profile.education[0] || "your academic background";
+  const certification = profile.certifications[0] || "one learning or certification from your resume";
+  const achievement = profile.achievements[0] || "one measurable result from your resume";
+
   return [
-    `Your resume/JD mentions ${primary}. Explain one project where you used it and what result it produced.`,
-    `How does your background in ${primary} and ${secondary} make you suitable for a ${roleLabel} role?`,
-    `If I ask you to prove ${primary} practically, what example would you show and what tradeoff did you handle?`,
-    `What is one gap in your resume for a ${roleLabel} role, and how are you improving it?`
-  ];
+    `Your resume mentions ${primary}. Explain one specific place where you used it and what result it produced.`,
+    `Walk me through ${project}. What problem did it solve, what was your personal contribution, and what was the final outcome?`,
+    `How do ${primary} and ${secondary} make you suitable for this ${roleLabel} role?`,
+    `In ${project}, what was the hardest technical or practical challenge, and how did you handle it?`,
+    `If I ask you to prove ${primary} in this interview, what live example, code, dashboard, or explanation would you show?`,
+    `Compare ${project} with ${secondProject}. Which one better proves your readiness for a ${roleLabel} role, and why?`,
+    `Based on ${education}, how have your academics prepared you for real ${roleLabel} work?`,
+    `Tell me about ${certification}. What did you learn, and how did you apply it practically?`,
+    `Your resume suggests ${achievement}. What evidence or metric can you give to support that impact?`,
+    `What is one weak area in your resume for a ${roleLabel} role, and what exactly are you doing to improve it?`,
+    `Suppose I give you a real company task related to ${primary}. How would you plan, execute, test, and present it?`,
+    `Why should I shortlist you for this ${roleLabel} role based only on your resume and projects?`
+  ].filter((item, index, list) => list.indexOf(item) === index);
 }
 
 function renderQuestions() {
@@ -432,7 +519,7 @@ function generatePersonalizedQuestion() {
     .slice(0, 8);
   state.askedQuestions[roleKey] = [...(state.askedQuestions[roleKey] || []), question].slice(-20);
   renderQuestions();
-  setQuestion(role.questions.length);
+  setQuestion(Math.max(0, getQuestions().indexOf(question)));
   els.statusText.textContent = `${capitalize(difficulty)} ${questionType} question generated`;
   setFeedback([
     transcript
@@ -447,15 +534,55 @@ function buildPersonalizedQuestion(transcript, role, roleName, generatedCount, o
   const questionType = options.questionType || "technical";
   const roleKey = els.roleSelect.value;
   const asked = new Set(state.askedQuestions[roleKey] || []);
+  const resumeQuestions = state.resumeContext.roleKey === roleKey && state.resumeContext.profile
+    ? buildResumeFollowUpQuestions(state.resumeContext.profile, roleName, difficulty, questionType)
+    : [];
 
   if (!transcript) {
-    return pickNonRepeatedQuestion(buildFreshRoleQuestions(role, roleName, difficulty, questionType), asked, generatedCount);
+    return pickNonRepeatedQuestion([...resumeQuestions, ...buildFreshRoleQuestions(role, roleName, difficulty, questionType)], asked, generatedCount);
   }
 
   const profile = buildAnswerProfile(transcript, role, roleName);
   const interviewerFollowUps = buildInterviewerFollowUps(profile, role, roleName, difficulty, questionType);
   const priorityQuestions = interviewerFollowUps.filter((item) => item.priority).map((item) => item.question);
-  return pickNonRepeatedQuestion(priorityQuestions, asked, generatedCount);
+  return pickNonRepeatedQuestion([...priorityQuestions, ...resumeQuestions], asked, generatedCount);
+}
+
+function buildResumeFollowUpQuestions(profile, roleName, difficulty, questionType) {
+  const roleLabel = roleName.toLowerCase();
+  const skill = profile.skills[0] || "your main skill";
+  const skillTwo = profile.skills[1] || "your second skill";
+  const project = profile.projects[0] || "your resume project";
+  const deepAsk = difficulty === "hard"
+    ? "failure cases, scalability, security, and tradeoffs"
+    : difficulty === "medium"
+      ? "technical decisions, constraints, and testing"
+      : "goal, tools, and your contribution";
+
+  const questions = {
+    technical: [
+      `From your resume, let us go deeper into ${project}. Explain its ${deepAsk}.`,
+      `You listed ${skill}. How would you use it to solve a real ${roleLabel} task from scratch?`,
+      `What is the strongest technical decision you made in ${project}, and what alternative did you reject?`
+    ],
+    behavioral: [
+      `Tell me about a moment during ${project} where you had to learn quickly or handle pressure.`,
+      `Your resume highlights ${skill}. How did you build confidence in that skill over time?`,
+      `Describe a teamwork or communication challenge connected to ${project}.`
+    ],
+    situational: [
+      `Suppose ${project} fails during a live interview demo. What would you check first and how would you explain it calmly?`,
+      `If a company asks you to rebuild ${project} for real users, what would you change first?`,
+      `If you must learn ${skillTwo} deeply in two weeks for this role, what plan would you follow?`
+    ],
+    hr: [
+      `Based on your resume, why are you a strong ${profile.seniority} fit for this ${roleLabel} position?`,
+      `Which resume point should I remember after this interview, and why?`,
+      `What gap in your resume might worry an interviewer, and how will you address it honestly?`
+    ]
+  };
+
+  return questions[questionType] || questions.technical;
 }
 
 function buildFreshRoleQuestions(role, roleName, difficulty, questionType) {
@@ -1703,10 +1830,28 @@ function loadSampleAnswer() {
 
 function updateRole() {
   state.activeQuestionIndex = 0;
+  const role = getActiveRole();
+  const roleKey = els.roleSelect.value;
+  const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
+  if (state.resumeContext.text) {
+    const profile = buildCandidateProfile(state.resumeContext.text, role, roleName);
+    const questions = buildResumeQuestions(profile, roleName);
+    state.resumeContext = {
+      ...state.resumeContext,
+      keywords: profile.skills,
+      questions,
+      profile,
+      roleKey
+    };
+    state.generatedQuestions[roleKey] = [
+      ...questions,
+      ...(state.generatedQuestions[roleKey] || [])
+    ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 16);
+    els.resumeStatus.textContent = `Resume context rebuilt for ${roleName}: ${profile.skills.slice(0, 6).join(", ") || "role keywords"}.`;
+  }
   renderQuestions();
   setQuestion(0);
   resetAnalysisOnly();
-  const role = getActiveRole();
   els.roleSummary.textContent = role.summary;
   els.coachTitle.textContent = role.title;
   els.coachSummary.textContent = role.summary;
@@ -1718,9 +1863,19 @@ function getActiveRole() {
 }
 
 function getQuestions() {
+  const roleKey = els.roleSelect.value;
+  const generated = state.generatedQuestions[roleKey] || [];
+  if (state.resumeContext.roleKey === roleKey && state.resumeContext.questions.length) {
+    return [
+      ...state.resumeContext.questions,
+      ...generated.filter((question) => !state.resumeContext.questions.includes(question)),
+      ...getActiveRole().questions
+    ];
+  }
+
   return [
     ...getActiveRole().questions,
-    ...(state.generatedQuestions[els.roleSelect.value] || [])
+    ...generated
   ];
 }
 
