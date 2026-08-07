@@ -208,8 +208,6 @@ const els = {
   startBtn: document.getElementById("startBtn"),
   stopBtn: document.getElementById("stopBtn"),
   clearBtn: document.getElementById("clearBtn"),
-  manualTranscript: document.getElementById("manualTranscript"),
-  analyzeTypedBtn: document.getElementById("analyzeTypedBtn"),
   correctAiBtn: document.getElementById("correctAiBtn"),
   correctionPanel: document.getElementById("correctionPanel"),
   correctedEnglish: document.getElementById("correctedEnglish"),
@@ -269,9 +267,7 @@ function wireEvents() {
   els.startBtn.addEventListener("click", startInterview);
   els.stopBtn.addEventListener("click", stopInterview);
   els.clearBtn.addEventListener("click", resetSession);
-  els.analyzeTypedBtn.addEventListener("click", analyzeTypedAnswer);
   els.correctAiBtn.addEventListener("click", correctWithAi);
-  els.manualTranscript.addEventListener("input", syncManualTranscript);
   els.sampleBtn.addEventListener("click", loadSampleAnswer);
   els.personalizedQuestionBtn.addEventListener("click", generatePersonalizedQuestion);
   els.roleSelect.addEventListener("change", updateRole);
@@ -310,7 +306,7 @@ function renderQuestions() {
 
 function generatePersonalizedQuestion() {
   const roleKey = els.roleSelect.value;
-  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript || getTypedTranscript());
+  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript);
   const role = getActiveRole();
   const roleName = els.roleSelect.options[els.roleSelect.selectedIndex].text;
   state.interviewTurns[roleKey] = (state.interviewTurns[roleKey] || 0) + 1;
@@ -776,7 +772,7 @@ function startAudioMeter(stream) {
 }
 
 function analyzeAnswer() {
-  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.interimTranscript || state.transcript || getTypedTranscript());
+  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.interimTranscript || state.transcript);
   const durationSeconds = Math.max(1, Math.round(((Date.now() - state.startedAt) || 1) / 1000));
   const words = transcript.match(/\b[\w']+\b/g) || [];
   const wordCount = words.length;
@@ -888,46 +884,15 @@ function buildFeedback(result) {
   return feedback;
 }
 
-function analyzeTypedAnswer() {
-  const typedTranscript = getTypedTranscript();
-  if (!typedTranscript) {
-    setFeedback([
-      "Type or paste your answer in Backup transcript first.",
-      "After that, the app can calculate speech pace, clarity, WBM, confidence, role relevance, and AI feedback."
-    ], "Transcript needed");
-    return;
-  }
-
-  stopTracks();
-  stopRecognition();
-  clearInterval(state.timerId);
-  cancelAnimationFrame(state.energyId);
-  document.body.classList.remove("recording");
-  const typedWords = typedTranscript.match(/\b[\w']+\b/g) || [];
-  const estimatedSeconds = Math.max(35, Math.round((typedWords.length / 135) * 60));
-  state.startedAt = Date.now() - estimatedSeconds * 1000;
-  state.transcript = typedTranscript;
-  state.finalTranscript = typedTranscript;
-  state.liveTranscript = typedTranscript;
-  if (!state.samples.length) {
-    state.samples = Array.from({ length: 120 }, (_, index) => 11 + Math.sin(index / 8) * 1.8);
-  }
-  updateTranscript(typedTranscript);
-  els.timer.textContent = formatDuration(estimatedSeconds);
-  setRecordingUi(false);
-  els.statusText.textContent = "Typed transcript analyzed";
-  analyzeAnswer();
-}
-
 function correctWithAi() {
-  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript || getTypedTranscript());
+  const transcript = sanitizeTranscript(state.liveTranscript || state.finalTranscript || state.transcript);
   if (!transcript) {
     els.correctionPanel.classList.add("visible");
-    els.correctedEnglish.textContent = "No transcript is available yet. Speak first, or type your answer in Backup transcript.";
-    renderMistakes(["Capture or type an answer before using Correct with AI."]);
+    els.correctedEnglish.textContent = "No live transcript is available yet. Speak first, then use Correct with AI.";
+    renderMistakes(["Capture a live transcript before using Correct with AI."]);
     renderKeySuggestions(getActiveRole().keywords.slice(0, 6));
     setFeedback([
-      "Correct with AI needs transcript text. Use live speech-to-text or the Backup transcript box.",
+      "Correct with AI needs a live transcript from your spoken answer.",
       "After correction, you can include the suggested role keys in your next answer."
     ], "Transcript needed");
     return;
@@ -938,6 +903,7 @@ function correctWithAi() {
   els.correctedEnglish.textContent = correction.corrected;
   renderMistakes(correction.mistakes);
   renderKeySuggestions(correction.keys);
+  highlightGrammarMistakes(transcript, correction.mistakePhrases);
   setFeedback([
     `Correct with AI: ${correction.summary}`,
     `Stronger answer line: ${correction.strongerLine}`,
@@ -1042,16 +1008,6 @@ function renderKeySuggestions(keys) {
     chip.textContent = key;
     els.keySuggestionList.appendChild(chip);
   });
-}
-
-function syncManualTranscript() {
-  const typedTranscript = getTypedTranscript();
-  if (!typedTranscript || state.liveTranscript || state.finalTranscript) return;
-  state.transcript = typedTranscript;
-}
-
-function getTypedTranscript() {
-  return sanitizeTranscript(els.manualTranscript.value || "");
 }
 
 function buildVerdict(confidence, pace, clarity) {
